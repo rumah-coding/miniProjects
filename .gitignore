@@ -1,5 +1,5 @@
 *
 
 !.gitignore
-!liveTerminalLogger/
-!liveTerminalLogger/*
+!groundControl/
+!groundControl/*

@@ -2,21 +2,29 @@
 import http.server
 import socketserver
 import datetime
-from threading import Thread
-import time
+from threading import Thread, Lock
 import os
 
+# Shared log storage with thread-safe access
 logs = []
-print ("🛠️  Initializing Live Terminal Logger...")
+logs_lock = Lock()
+
+print("🛠️  Initializing Ground Control...")
+
 def weblog(message):
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-    full_msg = f"[{timestamp}] {message}"
-    logs.append(full_msg)
+    full_msg = f"[{timestamp}] ● {message}"  # Emoji for visual pop in Reel
+    with logs_lock:
+        logs.append(full_msg)
     print(f"📝 {full_msg}")
 
 class LiveLogHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
+            # Safely copy logs for rendering
+            with logs_lock:
+                current_logs = logs.copy()
+
             html = """
             <!DOCTYPE html>
             <html>
@@ -24,13 +32,12 @@ class LiveLogHandler(http.server.BaseHTTPRequestHandler):
                 <title>Live Terminal Logger</title>
                 <meta http-equiv="refresh" content="2">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                    * {
-                        box-sizing: border-box;
-                    }
+               <meta charset="utf-8">
+                 <style>
+                    * { box-sizing: border-box; }
                     body {
                         background: #0a0a0a;
-                        color: #4ade80; /* hijau neon lembut */
+                        color: #4ade80;
                         font-family: 'SF Mono', 'Courier New', monospace;
                         margin: 0;
                         padding: 16px;
@@ -65,6 +72,8 @@ class LiveLogHandler(http.server.BaseHTTPRequestHandler):
                         min-height: 300px;
                         max-height: 70vh;
                         overflow-y: auto;
+                        box-shadow: 0 0 10px rgba(0, 247, 255, 0.15);
+                        border: 1px solid rgba(0, 247, 255, 0.1);
                     }
                     .log-entry {
                         padding: 8px 0;
@@ -95,15 +104,17 @@ class LiveLogHandler(http.server.BaseHTTPRequestHandler):
             <body>
                 <div class="container">
                     <header>
-                        <h1> Live Terminal Logger</h1>
+                        <h1>Ground Control to Major Tom</h1>
                         <div class="subtitle">Real-time logs from Python → Browser</div>
                     </header>
 
                     <div class="logs" id="logs">
             """
-            if logs:
-                for msg in logs:  # tampilkan urut (bukan reversed) — lebih alami seperti terminal
-                    html += f'<div class="log-entry">{msg}</div>'
+            if current_logs:
+                for msg in current_logs:
+                    # Escape HTML untuk keamanan dasar (meski input dari user lokal)
+                    safe_msg = msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    html += f'<div class="log-entry">{safe_msg}</div>'
             else:
                 html += '<div class="empty">No logs yet... start typing in the terminal!</div>'
 
@@ -111,11 +122,10 @@ class LiveLogHandler(http.server.BaseHTTPRequestHandler):
                     </div>
 
                     <footer>
-                        Auto-refresh every 2s • Built with Python's <code>http.server</code>
+                        🐍 Real-time logging in pure Python • Zero dependencies!
                     </footer>
                 </div>
 
-                <!-- Auto-scroll ke bawah tiap load -->
                 <script>
                     window.scrollTo(0, document.body.scrollHeight);
                 </script>
@@ -131,19 +141,18 @@ class LiveLogHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
     def log_message(self, format, *args):
-        # Sembunyikan log HTTP — jaga terminal tetap bersih
+        # Suppress HTTP request logs to keep terminal clean
         pass
 
-# Jalankan server di background
 def start_server():
     PORT = 8000
-    with socketserver.TCPServer(("", PORT), LiveLogHandler) as httpd:
+    # Use HTTPServer (more semantic than TCPServer for HTTP)
+    with http.server.HTTPServer(("", PORT), LiveLogHandler) as httpd:
         httpd.serve_forever()
 
 print("🚀 Starting Live Terminal Logger...")
 server_thread = Thread(target=start_server, daemon=True)
 server_thread.start()
-time.sleep(0.3)
 
 print(f"🌐 Open: http://localhost:8000")
 print("💡 Type messages below — they'll appear live in your browser!\n")
